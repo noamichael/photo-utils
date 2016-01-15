@@ -1,8 +1,9 @@
 package org.noamichael.photoutils;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import static org.noamichael.photoutils.HexUtils.byteToHex;
+import static org.noamichael.photoutils.HexUtils.*;
 import org.noamichael.photoutils.exception.PhotoUtilsException;
 
 /**
@@ -12,7 +13,7 @@ import org.noamichael.photoutils.exception.PhotoUtilsException;
  * Many of the comments and discoveries that helped build this class are
  * from:</p>
  * <ul>
- * <li>http://http://dev.exiv2.org/projects/exiv2/wiki/The_Metadata_in_JPEG_files</li>
+ * <li>http://dev.exiv2.org/projects/exiv2/wiki/The_Metadata_in_JPEG_files</li>
  * <li>http://www.onicos.com/staff/iz/formats/jpeg.html</li>
  * <li>https://en.wikipedia.org/wiki/JPEG</li>
  *
@@ -67,7 +68,7 @@ public class JPEGAnalyzer {
      * For example, an Exif JPEG file uses an APP1 marker to store metadata,
      * laid out in a structure based closely on TIFF.
      */
-    public static final String APPLICATION_SPECIFIC1 = "APP1";
+    public static final String APPLICATION_SPECIFIC = "APP";
     /**
      * Comment
      */
@@ -86,17 +87,37 @@ public class JPEGAnalyzer {
         new ByteSet(RESTART_INTERVAL, "ff", "d", PayloadType.TWO_BYTES),
         new ByteSet(START_OF_SCAN, "ff", "da", PayloadType.VARIABLE_LENGTH),
         new ByteSet(RESTART, "ff", "d", 7),
-        new ByteSet(APPLICATION_SPECIFIC1, "ff", "e1", PayloadType.VARIABLE_LENGTH),
+        new ByteSet(APPLICATION_SPECIFIC, "ff", "e1", PayloadType.VARIABLE_LENGTH),
         new ByteSet(COMMENT, "ff", "fe", PayloadType.VARIABLE_LENGTH),
         new ByteSet(END_OF_IMAGE, "ff", "d9", PayloadType.NONE)
     };
+
+    public static final Map<String, ByteSet> BYTE_SET_MAPPINGS = new HashMap<>();
+
+    static {
+        for (ByteSet b : BYTE_SETS) {
+            BYTE_SET_MAPPINGS.put(b.name, b);
+        }
+    }
 
     public static Map<String, Integer> findMetadataIndexes(byte[] copy) {
         return findByteSets(copy, BYTE_SETS);
     }
 
-    private static byte[] fetchByteSetContent(byte[] copy, ByteSet byteSet, int start) {
+    public static JPEGMetadata getMetadata(byte[] src) {
+        JPEGMetadata metadata = new JPEGMetadata();
+        Map<String, Integer> foundByteSets = findByteSets(src, BYTE_SETS);
+        metadata.startOfFrame1 = fetchByteSetContent(src, BYTE_SET_MAPPINGS.get(START_OF_FRAME0), foundByteSets.get(START_OF_FRAME0), false);
+        metadata.endOfImage = fetchByteSetContent(src, BYTE_SET_MAPPINGS.get(END_OF_IMAGE), foundByteSets.get(END_OF_IMAGE), false);
+        return metadata;
+    }
+
+    private static ByteSetPayload fetchByteSetContent(byte[] copy, ByteSet byteSet, int start, boolean read) {
         PayloadType payloadType = byteSet.payloadType;
+        ByteSetPayload byteSetPayload = new ByteSetPayload();
+        byteSetPayload.owner = byteSet;
+        byteSetPayload.start = start;
+
         switch (payloadType) {
             case TWO_BYTES: {
                 if (start + 1 > copy.length) {
@@ -104,12 +125,33 @@ public class JPEGAnalyzer {
                             String.format("Attempted to read byteset %s. However, it was found that the payload index was out of range", byteSet.name)
                     );
                 }
-                return new byte[]{copy[start], copy[start + 1]};
+                byteSetPayload.end = start + 1;
+                if (read) {
+                    byteSetPayload.payload = new byte[]{copy[start], copy[start + 1]};
+                }
             }
             case VARIABLE_LENGTH: {
+                byte[] length = {copy[start], copy[start + 1]};
+                int numberOfBytesToRead = HexUtils.toInt(length[0], length[1]);
+                byteSetPayload.start = start + 2;
+                byteSetPayload.end = start + numberOfBytesToRead - 1;
+                if (read) {
+                    byte[] payload = new byte[numberOfBytesToRead - 2];
+                    int payloadIndex = 0;
+                    for (int i = start + 2; i < start + numberOfBytesToRead; i++) {
+                        payload[payloadIndex] = copy[i];
+                        payloadIndex++;
+                    }
+                    System.out.println("Payload:" + Arrays.toString(HexUtils.bytesToHex(payload)));
+                    byteSetPayload.payload = payload;
+                }
+
+            }
+            case NONE: {
+                byteSetPayload.end = start;
             }
         }
-        return null;
+        return byteSetPayload;
     }
 
     private static Map<String, Integer> findByteSets(byte[] copy, ByteSet... byteSets) {
@@ -122,6 +164,8 @@ public class JPEGAnalyzer {
             byte b1 = copy[j + 1];
             for (ByteSet s : byteSets) {
                 String[] possible1Bytes;
+                //if the byte set has an n variable, collect all possible 
+                //byte value
                 if (s.n != null) {
                     possible1Bytes = new String[s.n + 1];
                     for (int i = 0; i < s.n; i++) {
@@ -134,7 +178,7 @@ public class JPEGAnalyzer {
                     if (byteToHex(b0).equals(s.byte0) && byteToHex(b1).equals(byte1)) {
                         foundSets.put(
                                 s.n == null ? s.name : s.name.concat(String.valueOf(s.n)),
-                                j + 2
+                                j + 2//the starting index of the length bytes
                         );
                     }
                 }
@@ -172,6 +216,33 @@ public class JPEGAnalyzer {
 
     }
 
-    static class JPEGMetadata {
+    public static class JPEGMetadata {
+
+        private ByteSetPayload startOfFrame1;
+        private ByteSetPayload endOfImage;
+
+        public int getStartOfFrame1StartIndex() {
+            return startOfFrame1.start;
+        }
+
+        public int getStartOfFrameEndIndex() {
+            return startOfFrame1.end;
+        }
+
+        public int getEndOfImageStartIndex() {
+            return endOfImage.start;
+        }
+
+        public int getEndOfImageEndIndex() {
+            return endOfImage.end;
+        }
+    }
+
+    static class ByteSetPayload {
+
+        int start;
+        int end;
+        ByteSet owner;
+        byte[] payload;
     }
 }
