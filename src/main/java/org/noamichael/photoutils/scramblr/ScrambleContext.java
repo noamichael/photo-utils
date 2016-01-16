@@ -17,65 +17,39 @@ public interface ScrambleContext {
 
     void sequentialScramble(Consumer<SequentialScramble> consumer);
 
-    class SequentialScramble {
-
-        private final int x;
-        private final int y;
-        private final int height;
-        private final int width;
-        private final Color color;
-        private final WritableRaster writableRaster;
-
-        public SequentialScramble(int x, int y, int height, int width, Color color, WritableRaster writableRaster) {
-            this.x = x;
-            this.y = y;
-            this.height = height;
-            this.width = width;
-            this.color = color;
-            this.writableRaster = writableRaster;
-        }
+    interface SequentialScramble {
 
         /**
          * @return the x
          */
-        public int getX() {
-            return x;
-        }
+        int getX();
 
         /**
          * @return the y
          */
-        public int getY() {
-            return y;
-        }
+        int getY();
 
         /**
          * @return the color
          */
-        public Color getColor() {
-            return color;
-        }
+        Color getColor();
 
         /**
          * @return the writableRaster
          */
-        public WritableRaster getWritableRaster() {
-            return writableRaster;
-        }
+        WritableRaster getWritableRaster();
 
         /**
          * @return the height
          */
-        public int getHeight() {
-            return height;
-        }
+        int getHeight();
 
         /**
          * @return the width
          */
-        public int getWidth() {
-            return width;
-        }
+        int getWidth();
+
+        void finish();
 
     }
 }

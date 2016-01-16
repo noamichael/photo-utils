@@ -8,7 +8,7 @@ import java.io.File;
  */
 public interface ScrambleStream {
    
-    ScrambleStream performScramble(JPEGScramblrStrategy strategy);
+    ScrambleStream performScramble(ScramblrStrategy strategy);
     
     File thenWriteTo(final String base);
 }

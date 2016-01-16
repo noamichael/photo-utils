@@ -6,7 +6,6 @@ import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.Random;
 import java.util.function.Consumer;
 import javax.imageio.ImageIO;
 import org.noamichael.photoutils.exception.PhotoUtilsException;
@@ -16,9 +15,9 @@ import org.noamichael.photoutils.exception.PhotoUtilsException;
  *
  * @author micha_000
  */
-public class JPEGScramblr {
+public class Scramblr {
 
-    public JPEGScramblr() {
+    public Scramblr() {
     }
 
     /**
@@ -45,7 +44,7 @@ public class JPEGScramblr {
     static class ScrambleStreamImpl implements ScrambleStream {
 
         private final BufferedImage image;
-        private ScrambleContext context;
+        private final ScrambleContext context;
 
         public ScrambleStreamImpl(BufferedImage image) {
             this.image = image;
@@ -70,7 +69,7 @@ public class JPEGScramblr {
         }
 
         @Override
-        public ScrambleStream performScramble(JPEGScramblrStrategy strategy) {
+        public ScrambleStream performScramble(ScramblrStrategy strategy) {
             strategy.scramble(context);
             return this;
         }
@@ -102,17 +101,101 @@ public class JPEGScramblr {
             int width = image.getWidth();
             int height = image.getHeight();
             WritableRaster raster = image.getRaster();
-            Random random = new Random();
-            for (int x = 0; x < width; x++) {
+            iteration:
+            {
                 for (int y = 0; y < height; y++) {
-                    if (random.nextBoolean()) {
+                    for (int x = 0; x < width; x++) {
                         int[] pixels = raster.getPixel(x, y, (int[]) null);
                         Color color = new Color(pixels[0], pixels[1], pixels[2]);
-                        consumer.accept(new SequentialScramble(x, y, height, width, color, raster
-                        ));
+                        SequentialScrambleImpl sequentialScramble = new SequentialScrambleImpl(x, y, height, width, color, raster);
+                        consumer.accept(sequentialScramble);
+                        if (sequentialScramble.isFinished()) {
+                            break iteration;
+                        }
                     }
                 }
             }
+        }
+
+    }
+
+    static class SequentialScrambleImpl implements ScrambleContext.SequentialScramble {
+
+        private final int x;
+        private final int y;
+        private final int height;
+        private final int width;
+        private final Color color;
+        private final WritableRaster writableRaster;
+        private boolean finished;
+
+        public SequentialScrambleImpl(int x, int y, int height, int width, Color color, WritableRaster writableRaster) {
+            this.x = x;
+            this.y = y;
+            this.height = height;
+            this.width = width;
+            this.color = color;
+            this.writableRaster = writableRaster;
+        }
+
+        /**
+         * @return the x
+         */
+        @Override
+        public int getX() {
+            return x;
+        }
+
+        /**
+         * @return the y
+         */
+        @Override
+        public int getY() {
+            return y;
+        }
+
+        /**
+         * @return the color
+         */
+        @Override
+        public Color getColor() {
+            return color;
+        }
+
+        /**
+         * @return the writableRaster
+         */
+        @Override
+        public WritableRaster getWritableRaster() {
+            return writableRaster;
+        }
+
+        /**
+         * @return the height
+         */
+        @Override
+        public int getHeight() {
+            return height;
+        }
+
+        /**
+         * @return the width
+         */
+        @Override
+        public int getWidth() {
+            return width;
+        }
+
+        @Override
+        public void finish() {
+            finished = true;
+        }
+
+        /**
+         * @return the finished
+         */
+        boolean isFinished() {
+            return finished;
         }
 
     }
